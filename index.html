@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>USGS Topo & FEMA NFHL Web Map</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    html, body, #map {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+    }
+    
+    /* Dark Glassmorphic Panels */
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.82);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    /* Custom Scrollbar for Sidebar */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    .custom-scrollbar::-webkit-scrollbar-focus,
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 3px;
+    }
+
+    /* Leaflet Overrides for Dark Theme */
+    .leaflet-bar a {
+      background-color: rgba(15, 23, 42, 0.85) !important;
+      color: #f1f5f9 !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+    }
+    .leaflet-bar a:hover {
+      background-color: rgba(30, 41, 59, 0.9) !important;
+    }
+    .leaflet-popup-content-wrapper {
+      background: rgba(15, 23, 42, 0.95) !important;
+      color: #f8fafc !important;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px !important;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .leaflet-popup-tip {
+      background: rgba(15, 23, 42, 0.95) !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col md:flex-row h-screen w-screen">
+
+  <!-- Sidebar Overlay / Mobile Drawer -->
+  <aside class="w-full md:w-80 glass-panel z-[1001] flex flex-col justify-between shrink-0 h-auto md:h-full max-h-[40vh] md:max-h-full border-b md:border-b-0 md:border-r border-slate-800 transition-all duration-300">
+    <div class="p-4 space-y-4 overflow-y-auto custom-scrollbar">
+      
+      <!-- App Header -->
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i class="fa-solid fa-water text-cyan-400 text-xl"></i>
+          <h1 class="font-bold text-lg tracking-wide text-white">NFHL Viewer</h1>
+        </div>
+        <span class="text-xs bg-cyan-950 text-cyan-400 px-2 py-0.5 rounded-full border border-cyan-800/50 font-medium">GIS Live</span>
+      </div>
+
+      <hr class="border-slate-800" />
+
+      <!-- Location Search Bar -->
+      <div class="space-y-1">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Search Location</label>
+        <div class="relative">
+          <input type="text" id="searchInput" placeholder="City, Zip, or Lat, Lng..." 
+                 class="w-full bg-slate-900/90 border border-slate-700/80 rounded-lg py-2 pl-9 pr-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors" />
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-sm"></i>
+        </div>
+      </div>
+
+      <!-- Quick Location Hotspots -->
+      <div class="space-y-1.5">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Quick Hotspots</label>
+        <div class="grid grid-cols-2 gap-1.5 text-xs">
+          <button onclick="flyToLocation(38.4192, -82.4452, 14)" class="bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 py-1.5 px-2.5 rounded-md text-left flex items-center justify-between border border-slate-700/50 transition">
+            <span>Huntington, WV</span>
+            <i class="fa-solid fa-location-dot text-cyan-400 text-[10px]"></i>
+          </button>
+          <button onclick="flyToLocation(29.9511, -90.0715, 14)" class="bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 py-1.5 px-2.5 rounded-md text-left flex items-center justify-between border border-slate-700/50 transition">
+            <span>New Orleans, LA</span>
+            <i class="fa-solid fa-location-dot text-cyan-400 text-[10px]"></i>
+          </button>
+          <button onclick="flyToLocation(29.7604, -95.3698, 14)" class="bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 py-1.5 px-2.5 rounded-md text-left flex items-center justify-between border border-slate-700/50 transition">
+            <span>Houston, TX</span>
+            <i class="fa-solid fa-location-dot text-cyan-400 text-[10px]"></i>
+          </button>
+          <button onclick="flyToLocation(38.6270, -90.1994, 14)" class="bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 py-1.5 px-2.5 rounded-md text-left flex items-center justify-between border border-slate-700/50 transition">
+            <span>St. Louis, MO</span>
+            <i class="fa-solid fa-location-dot text-cyan-400 text-[10px]"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Basemap Control -->
+      <div class="space-y-1.5">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Basemap</label>
+        <select id="basemapSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500">
+          <option value="usgsTopo">USGS Topographic</option>
+          <option value="usgsImagery">USGS Imagery Topo</option>
+          <option value="googleHybrid">Google Hybrid</option>
+          <option value="googleSatellite">Google Satellite</option>
+          <option value="bingSatellite">Bing Satellite</option>
+          <option value="esriSatellite">Esri Satellite</option>
+          <option value="esriNatGeo">Esri National Geographic</option>
+          <option value="esriStandard">Esri Standard (Street)</option>
+        </select>
+      </div>
+
+      <!-- FEMA Opacity Slider -->
+      <div class="space-y-1.5">
+        <div class="flex justify-between items-center">
+          <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">FEMA Layer Opacity</label>
+          <span id="opacityVal" class="text-xs font-mono text-cyan-400">70%</span>
+        </div>
+        <input type="range" id="opacitySlider" min="10" max="100" value="70" 
+               class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer" />
+      </div>
+
+      <!-- Dynamic Flood Legend -->
+      <div class="space-y-2 pt-2 border-t border-slate-800">
+        <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Flood Zone Legend</label>
+        <div class="space-y-1.5 text-xs text-slate-300">
+          <div class="flex items-center space-x-2">
+            <span class="w-4 h-3 rounded-sm bg-[#709cf1] border border-blue-400 inline-block shrink-0"></span>
+            <span>1% Annual Chance (Zone A, AE, VE)</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="w-4 h-3 rounded-sm bg-[#004da8] border border-blue-600 inline-block shrink-0"></span>
+            <span>Regulatory Floodway</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="w-4 h-3 rounded-sm bg-[#ffaa00] border border-amber-500 inline-block shrink-0"></span>
+            <span>0.2% Annual Chance (Zone X Shaded)</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sidebar Footer Coordinates -->
+    <div class="p-3 bg-slate-900/80 border-t border-slate-800/80 text-[11px] font-mono text-slate-400 flex justify-between items-center">
+      <span id="coordsDisplay">Lat: --.----, Lng: --.----</span>
+      <span id="zoomDisplay">Zoom: 14</span>
+    </div>
+  </aside>
+
+  <!-- Main Map Container -->
+  <main class="relative flex-1 h-full w-full">
+    
+    <!-- Dynamic Scale Dependency Warning Banner -->
+    <div id="zoom-warning" class="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] glass-panel px-4 py-2 rounded-full text-xs font-semibold text-amber-300 border-amber-500/40 shadow-xl flex items-center space-x-2 transition-all duration-300">
+      <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+      <span id="warningText">Zoom in closer (Zoom 13+) to render FEMA Hazard Layers</span>
+    </div>
+
+    <!-- The Map DIV -->
+    <div id="map" class="z-0"></div>
+  </main>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Esri Leaflet Plugin -->
+  <script src="https://unpkg.com/esri-leaflet@3.0.12/dist/esri-leaflet.js"></script>
+
+  <script>
+    // 1. Initialize Map
+    const map = L.map('map', {
+      center: [38.4192, -82.4452],
+      zoom: 14,
+      minZoom: 4,
+      maxNativeZoom: 19,
+      maxZoom: 22,
+      zoomControl: false
+    });
+
+    // Custom Zoom Control Position
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // 2. Define Basemaps
+    const basemaps = {
+      usgsTopo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 16,
+        maxZoom: 22,
+        attribution: 'Tile data &copy; <a href="https://www.usgs.gov/" target="_blank">USGS</a>'
+      }),
+      usgsImagery: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 16,
+        maxZoom: 22,
+        attribution: 'Tile data &copy; <a href="https://www.usgs.gov/" target="_blank">USGS</a>'
+      }),
+      googleHybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 22,
+        attribution: '&copy; Google'
+      }),
+      googleSatellite: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        maxZoom: 22,
+        attribution: '&copy; Google'
+      }),
+      bingSatellite: L.tileLayer('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=138', {
+        subdomains: ['0', '1', '2', '3'],
+        maxZoom: 22,
+        attribution: '&copy; Microsoft Bing Maps',
+        tileUrlFunction: function(tilePoint) {
+          const z = tilePoint.z;
+          let quadkey = '';
+          for (let i = z; i > 0; i--) {
+            let digit = 0;
+            const mask = 1 << (i - 1);
+            if ((tilePoint.x & mask) !== 0) digit++;
+            if ((tilePoint.y & mask) !== 0) digit += 2;
+            quadkey += digit;
+          }
+          return `https://ecn.t0.tiles.virtualearth.net/tiles/a${quadkey}.jpeg?g=138`;
+        }
+      }),
+      esriSatellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 22,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+      }),
+      esriNatGeo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 16,
+        maxZoom: 22,
+        attribution: 'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC'
+      }),
+      esriStandard: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 22,
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
+      })
+    };
+
+    // Override Leaflet's Bing Tile URL computation
+    basemaps.bingSatellite.getTileUrl = function(coords) {
+      return this.options.tileUrlFunction(coords);
+    };
+
+    // Set Default Basemap
+    let currentBasemap = basemaps.usgsTopo.addTo(map);
+
+    // 3. Official FEMA NFHL Esri REST Dynamic Map Layer
+    const nfhlLayer = L.esri.dynamicMapLayer({
+      url: 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer',
+      opacity: 0.70,
+      f: 'image'
+    }).addTo(map);
+
+    // 4. UI Listeners & Interactions
+
+    // Basemap Switcher
+    document.getElementById('basemapSelect').addEventListener('change', function(e) {
+      map.removeLayer(currentBasemap);
+      currentBasemap = basemaps[e.target.value];
+      currentBasemap.addTo(map);
+    });
+
+    // Opacity Slider
+    const opacitySlider = document.getElementById('opacitySlider');
+    const opacityVal = document.getElementById('opacityVal');
+    opacitySlider.addEventListener('input', function(e) {
+      const val = e.target.value / 100;
+      nfhlLayer.setOpacity(val);
+      opacityVal.innerText = `${e.target.value}%`;
+    });
+
+    // Coordinate & Zoom Tracking
+    map.on('mousemove', function(e) {
+      document.getElementById('coordsDisplay').innerText = `Lat: ${e.latlng.lat.toFixed(4)}, Lng: ${e.latlng.lng.toFixed(4)}`;
+    });
+
+    // Dynamic Scale Dependency Banner Check
+    const warningEl = document.getElementById('zoom-warning');
+    const warningText = document.getElementById('warningText');
+
+    function checkScaleDependency() {
+      const currentZoom = map.getZoom();
+      document.getElementById('zoomDisplay').innerText = `Zoom: ${currentZoom}`;
+
+      if (currentZoom >= 13) {
+        warningEl.className = "absolute top-4 left-1/2 -translate-x-1/2 z-[1000] glass-panel px-4 py-2 rounded-full text-xs font-semibold text-emerald-300 border-emerald-500/40 shadow-xl flex items-center space-x-2 transition-all duration-300";
+        warningText.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i><span>FEMA NFHL Active (Zoom ${currentZoom})</span>`;
+      } else {
+        warningEl.className = "absolute top-4 left-1/2 -translate-x-1/2 z-[1000] glass-panel px-4 py-2 rounded-full text-xs font-semibold text-amber-300 border-amber-500/40 shadow-xl flex items-center space-x-2 transition-all duration-300";
+        warningText.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-400"></i><span>Zoom in closer (Zoom level ${currentZoom}/13) to render flood details</span>`;
+      }
+    }
+
+    map.on('zoomend', checkScaleDependency);
+    checkScaleDependency();
+
+    // Hotspot Fly-to Helper
+    function flyToLocation(lat, lng, zoom) {
+      map.flyTo([lat, lng], zoom, { duration: 1.5 });
+    }
+
+    // Interactive Identify Click Handler (Fetch Zone Attributes directly from FEMA REST endpoint)
+    map.on('click', function (e) {
+      if (!map.hasLayer(nfhlLayer)) return;
+
+      nfhlLayer.identify()
+        .on(map)
+        .at(e.latlng)
+        .run(function (error, featureCollection) {
+          if (error || !featureCollection || !featureCollection.features.length) return;
+
+          const feature = featureCollection.features[0];
+          const props = feature.properties;
+
+          let popupHtml = `
+            <div class="space-y-1.5 p-1 text-xs">
+              <div class="font-bold text-sm text-cyan-400 border-b border-slate-700 pb-1 flex items-center justify-between">
+                <span>${feature.layerName || 'Flood Hazard Feature'}</span>
+                <i class="fa-solid fa-circle-info text-slate-400"></i>
+              </div>
+          `;
+
+          if (props.FLD_ZONE) {
+            popupHtml += `<div><strong class="text-slate-400">Flood Zone:</strong> <span class="text-white font-semibold">${props.FLD_ZONE}</span></div>`;
+          }
+          if (props.ZONE_SUBTY) {
+            popupHtml += `<div><strong class="text-slate-400">Subtype:</strong> <span class="text-slate-200">${props.ZONE_SUBTY}</span></div>`;
+          }
+          if (props.STATIC_BFE && props.STATIC_BFE !== -9999) {
+            popupHtml += `<div><strong class="text-slate-400">Static BFE:</strong> <span class="text-emerald-400 font-semibold">${props.STATIC_BFE} ft</span></div>`;
+          }
+          if (props.DFIRM_ID) {
+            popupHtml += `<div><strong class="text-slate-400">FIRM Panel ID:</strong> <span class="text-slate-300">${props.DFIRM_ID}</span></div>`;
+          }
+
+          popupHtml += `</div>`;
+
+          L.popup()
+            .setLatLng(e.latlng)
+            .setContent(popupHtml)
+            .openOn(map);
+        });
+    });
+
+    // 5. Geocoding Location Search (OpenStreetMap Nominatim)
+    const searchInput = document.getElementById('searchInput');
+    searchInput.addEventListener('keypress', function (e) {
+      if (e.key === 'Enter') {
+        const query = searchInput.value;
+        if (!query) return;
+
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.length > 0) {
+              const lat = parseFloat(data[0].lat);
+              const lon = parseFloat(data[0].lon);
+              map.flyTo([lat, lon], 14, { duration: 1.5 });
+            } else {
+              alert('Location not found. Try entering a city or Zip code.');
+            }
+          })
+          .catch(() => alert('Error searching location.'));
+      }
+    });
+  </script>
+</body>
+</html>
