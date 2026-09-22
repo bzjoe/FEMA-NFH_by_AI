@@ -84,13 +84,19 @@
 
       <hr class="border-slate-800" />
 
-      <!-- Location Search Bar -->
+      <!-- Location Search Bar + GPS Toggle Button -->
       <div class="space-y-1">
         <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Search Location</label>
-        <div class="relative">
-          <input type="text" id="searchInput" placeholder="City, Zip, or Lat, Lng..." 
-                 class="w-full bg-slate-900/90 border border-slate-700/80 rounded-lg py-2 pl-9 pr-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors" />
-          <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-sm"></i>
+        <div class="flex items-center gap-2">
+          <div class="relative flex-1">
+            <input type="text" id="searchInput" placeholder="City, Zip, or Lat, Lng..." 
+                   class="w-full bg-slate-900/90 border border-slate-700/80 rounded-lg py-2 pl-9 pr-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 transition-colors" />
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-500 text-sm"></i>
+          </div>
+          <button id="locateBtn" onclick="toggleLocationTracking()" title="Toggle GPS Live Tracking" 
+                  class="bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-cyan-400 p-2 rounded-lg transition-colors flex items-center justify-center h-[38px] w-[38px] shrink-0">
+            <i id="locateIcon" class="fa-solid fa-crosshairs text-base"></i>
+          </button>
         </div>
       </div>
 
@@ -122,6 +128,7 @@
         <label class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Basemap</label>
         <select id="basemapSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500">
           <option value="usgsTopo">USGS Topographic</option>
+          <option value="usgsNaip">USGS NAIP / Imagery Only</option>
           <option value="usgsImagery">USGS Imagery Topo</option>
           <option value="googleHybrid">Google Hybrid</option>
           <option value="googleSatellite">Google Satellite</option>
@@ -194,8 +201,8 @@
       center: [38.4192, -82.4452],
       zoom: 14,
       minZoom: 4,
-      maxNativeZoom: 19,
-      maxZoom: 22,
+      maxNativeZoom: 16,
+      maxZoom: 23,
       zoomControl: false
     });
 
@@ -206,25 +213,30 @@
     const basemaps = {
       usgsTopo: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}', {
         maxNativeZoom: 16,
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: 'Tile data &copy; <a href="https://www.usgs.gov/" target="_blank">USGS</a>'
+      }),
+      usgsNaip: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}', {
+        maxNativeZoom: 16,
+        maxZoom: 23,
+        attribution: 'USGS The National Map / USDA NAIP'
       }),
       usgsImagery: L.tileLayer('https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryTopo/MapServer/tile/{z}/{y}/{x}', {
         maxNativeZoom: 16,
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: 'Tile data &copy; <a href="https://www.usgs.gov/" target="_blank">USGS</a>'
       }),
       googleHybrid: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: '&copy; Google'
       }),
       googleSatellite: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: '&copy; Google'
       }),
       bingSatellite: L.tileLayer('https://ecn.t{s}.tiles.virtualearth.net/tiles/a{q}.jpeg?g=138', {
         subdomains: ['0', '1', '2', '3'],
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: '&copy; Microsoft Bing Maps',
         tileUrlFunction: function(tilePoint) {
           const z = tilePoint.z;
@@ -240,16 +252,16 @@
         }
       }),
       esriSatellite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
       }),
       esriNatGeo: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
         maxNativeZoom: 16,
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: 'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC'
       }),
       esriStandard: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
-        maxZoom: 22,
+        maxZoom: 23,
         attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom, 2012'
       })
     };
@@ -269,7 +281,102 @@
       f: 'image'
     }).addTo(map);
 
-    // 4. UI Listeners & Interactions
+    // 4. Live Geolocation Continuous Tracking System
+    let watchId = null;
+    let locationMarker = null;
+    let accuracyCircle = null;
+
+    function toggleLocationTracking() {
+      const locateBtn = document.getElementById('locateBtn');
+      const locateIcon = document.getElementById('locateIcon');
+
+      if (!navigator.geolocation) {
+        alert('Geolocation is not supported by your browser or device.');
+        return;
+      }
+
+      // If active, stop tracking
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+
+        if (locationMarker) map.removeLayer(locationMarker);
+        if (accuracyCircle) map.removeLayer(accuracyCircle);
+        locationMarker = null;
+        accuracyCircle = null;
+
+        locateBtn.classList.remove('bg-cyan-500', 'text-slate-950');
+        locateBtn.classList.add('bg-slate-900/90', 'text-cyan-400');
+        locateIcon.className = 'fa-solid fa-crosshairs text-base';
+        return;
+      }
+
+      // Start continuous tracking
+      locateIcon.className = 'fa-solid fa-circle-notch fa-spin text-base';
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          const accuracy = position.coords.accuracy;
+
+          // Update active state styling on button
+          locateBtn.classList.remove('bg-slate-900/90', 'text-cyan-400');
+          locateBtn.classList.add('bg-cyan-500', 'text-slate-950');
+          locateIcon.className = 'fa-solid fa-location-arrow text-base';
+
+          // Update marker position
+          if (!locationMarker) {
+            locationMarker = L.circleMarker([lat, lng], {
+              radius: 7,
+              fillColor: '#06b6d4',
+              color: '#ffffff',
+              weight: 2,
+              opacity: 1,
+              fillOpacity: 0.9
+            }).addTo(map);
+
+            accuracyCircle = L.circle([lat, lng], {
+              radius: accuracy,
+              color: '#06b6d4',
+              weight: 1,
+              opacity: 0.4,
+              fillColor: '#06b6d4',
+              fillOpacity: 0.15
+            }).addTo(map);
+
+            map.setView([lat, lng], Math.max(map.getZoom(), 15));
+          } else {
+            locationMarker.setLatLng([lat, lng]);
+            accuracyCircle.setLatLng([lat, lng]);
+            accuracyCircle.setRadius(accuracy);
+            
+            map.panTo([lat, lng], { animate: true, duration: 0.8 });
+          }
+        },
+        (error) => {
+          toggleLocationTracking();
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              alert('Location permission denied.');
+              break;
+            case error.POSITION_UNAVAILABLE:
+              alert('Location signal unavailable.');
+              break;
+            case error.TIMEOUT:
+              alert('GPS request timed out.');
+              break;
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 10000
+        }
+      );
+    }
+
+    // 5. UI Listeners & Interactions
 
     // Basemap Switcher
     document.getElementById('basemapSelect').addEventListener('change', function(e) {
@@ -360,7 +467,7 @@
         });
     });
 
-    // 5. Geocoding Location Search (OpenStreetMap Nominatim)
+    // 6. Geocoding Location Search (OpenStreetMap Nominatim)
     const searchInput = document.getElementById('searchInput');
     searchInput.addEventListener('keypress', function (e) {
       if (e.key === 'Enter') {
