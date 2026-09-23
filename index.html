@@ -98,6 +98,11 @@
             <i id="locateIcon" class="fa-solid fa-crosshairs text-base"></i>
           </button>
         </div>
+        <button id="followBtn" type="button"
+                class="hidden w-full bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 p-2 rounded-lg text-xs transition-colors">
+          <i class="fa-solid fa-location-crosshairs mr-1"></i>
+          Follow my location
+        </button>
       </div>
 
       <!-- Quick Location Hotspots -->
@@ -183,7 +188,7 @@
     <!-- Dynamic Scale Dependency Warning Banner -->
     <div id="zoom-warning" class="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] glass-panel px-4 py-2 rounded-full text-xs font-semibold text-amber-300 border-amber-500/40 shadow-xl flex items-center space-x-2 transition-all duration-300">
       <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
-      <span id="warningText">Zoom in closer (Zoom 13+) to render FEMA Hazard Layers</span>
+      <span id="warningText">Zoom in for more detailed FEMA flood information</span>
     </div>
 
     <!-- The Map DIV -->
@@ -285,6 +290,8 @@
     let watchId = null;
     let locationMarker = null;
     let accuracyCircle = null;
+    let followLocation = true;
+    let suppressMapMoveHandler = false;
 
     function toggleLocationTracking() {
       const locateBtn = document.getElementById('locateBtn');
@@ -409,10 +416,10 @@
 
       if (currentZoom >= 13) {
         warningEl.className = "absolute top-4 left-1/2 -translate-x-1/2 z-[1000] glass-panel px-4 py-2 rounded-full text-xs font-semibold text-emerald-300 border-emerald-500/40 shadow-xl flex items-center space-x-2 transition-all duration-300";
-        warningText.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i><span>FEMA NFHL Active (Zoom ${currentZoom})</span>`;
+        warningText.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i><span>Detailed FEMA NFHL view · Zoom ${currentZoom}</span>`;
       } else {
         warningEl.className = "absolute top-4 left-1/2 -translate-x-1/2 z-[1000] glass-panel px-4 py-2 rounded-full text-xs font-semibold text-amber-300 border-amber-500/40 shadow-xl flex items-center space-x-2 transition-all duration-300";
-        warningText.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-400"></i><span>Zoom in closer (Zoom level ${currentZoom}/13) to render flood details</span>`;
+        warningText.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-400"></i><span>Zoom in for more detailed FEMA flood information · Zoom ${currentZoom}</span>`;
       }
     }
 
@@ -424,7 +431,8 @@
       map.flyTo([lat, lng], zoom, { duration: 1.5 });
     }
 
-    // Interactive Identify Click Handler (Fetch Zone Attributes directly from FEMA REST endpoint)
+    // 6. Interactive Identify Click Handler
+    // Fetch FEMA NFHL attributes directly from the FEMA REST endpoint.
     map.on('click', function (e) {
       if (!map.hasLayer(nfhlLayer)) return;
 
@@ -432,39 +440,145 @@
         .on(map)
         .at(e.latlng)
         .run(function (error, featureCollection) {
-          if (error || !featureCollection || !featureCollection.features.length) return;
+          if (error) {
+            console.error('FEMA identify error:', error);
+            return;
+          }
 
-          const feature = featureCollection.features[0];
-          const props = feature.properties;
+          const features = featureCollection?.features || [];
 
-          let popupHtml = `
-            <div class="space-y-1.5 p-1 text-xs">
-              <div class="font-bold text-sm text-cyan-400 border-b border-slate-700 pb-1 flex items-center justify-between">
-                <span>${feature.layerName || 'Flood Hazard Feature'}</span>
-                <i class="fa-solid fa-circle-info text-slate-400"></i>
+          if (!features.length) {
+            L.popup()
+              .setLatLng(e.latlng)
+              .setContent(`
+                <div class="p-1 text-xs">
+                  <div class="font-bold text-sm text-cyan-400 mb-1">FEMA NFHL</div>
+                  <div class="text-slate-300">No FEMA NFHL feature identified at this location.</div>
+                </div>
+              `)
+              .openOn(map);
+            return;
+          }
+
+          const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+          const preferredFields = [
+            ['FLD_ZONE', 'Flood Zone'],
+            ['ZONE_SUBTY', 'Subtype'],
+            ['STATIC_BFE', 'Static BFE'],
+            ['DFIRM_ID', 'FIRM Panel ID'],
+            ['SFHA_TF', 'SFHA'],
+            ['FLOODWAY', 'Floodway'],
+            ['EFF_DATE', 'Effective Date'],
+            ['VERSION_ID', 'Version']
+          ];
+
+          const renderFeature = (feature, index) => {
+            const props = feature.properties || {};
+            const title = feature.layerName || props.LAYER || 'Flood Hazard Feature';
+
+            let rows = '';
+
+            preferredFields.forEach(([field, label]) => {
+              const value = props[field];
+              if (value !== undefined && value !== null && value !== '' && value !== -9999 && value !== '-9999') {
+                const valueClass = field === 'STATIC_BFE'
+                  ? 'text-emerald-400 font-semibold'
+                  : 'text-slate-200';
+
+                rows += `
+                  <div>
+                    <strong class="text-slate-400">${escapeHtml(label)}:</strong>
+                    <span class="${valueClass}">${escapeHtml(value)}${field === 'STATIC_BFE' ? ' ft' : ''}</span>
+                  </div>`;
+              }
+            });
+
+            if (!rows) {
+              const fallbackEntries = Object.entries(props)
+                .filter(([key, value]) =>
+                  value !== undefined &&
+                  value !== null &&
+                  value !== '' &&
+                  value !== -9999 &&
+                  value !== '-9999'
+                )
+                .slice(0, 8);
+
+              fallbackEntries.forEach(([key, value]) => {
+                rows += `
+                  <div>
+                    <strong class="text-slate-400">${escapeHtml(key)}:</strong>
+                    <span class="text-slate-200">${escapeHtml(value)}</span>
+                  </div>`;
+              });
+            }
+
+            return `
+              <div class="p-1 ${index > 0 ? 'mt-3 pt-3 border-t border-slate-700' : ''}">
+                <div class="font-bold text-sm text-cyan-400 border-b border-slate-700 pb-1 mb-1 flex items-center justify-between">
+                  <span>${escapeHtml(title)}</span>
+                  <i class="fa-solid fa-circle-info text-slate-400"></i>
+                </div>
+                <div class="space-y-1.5 text-xs">
+                  ${rows || '<div class="text-slate-400">No displayable attributes returned.</div>'}
+                </div>
+              </div>`;
+          };
+
+          const popupHtml = `
+            <div class="space-y-1.5 text-xs">
+              <div class="text-[11px] text-slate-400 pb-1 border-b border-slate-700">
+                ${features.length} FEMA feature${features.length === 1 ? '' : 's'} identified
               </div>
-          `;
+              ${features.map(renderFeature).join('')}
+            </div>`;
 
-          if (props.FLD_ZONE) {
-            popupHtml += `<div><strong class="text-slate-400">Flood Zone:</strong> <span class="text-white font-semibold">${props.FLD_ZONE}</span></div>`;
-          }
-          if (props.ZONE_SUBTY) {
-            popupHtml += `<div><strong class="text-slate-400">Subtype:</strong> <span class="text-slate-200">${props.ZONE_SUBTY}</span></div>`;
-          }
-          if (props.STATIC_BFE && props.STATIC_BFE !== -9999) {
-            popupHtml += `<div><strong class="text-slate-400">Static BFE:</strong> <span class="text-emerald-400 font-semibold">${props.STATIC_BFE} ft</span></div>`;
-          }
-          if (props.DFIRM_ID) {
-            popupHtml += `<div><strong class="text-slate-400">FIRM Panel ID:</strong> <span class="text-slate-300">${props.DFIRM_ID}</span></div>`;
-          }
-
-          popupHtml += `</div>`;
-
-          L.popup()
+          L.popup({ maxWidth: 360 })
             .setLatLng(e.latlng)
             .setContent(popupHtml)
             .openOn(map);
         });
+    });
+
+    // GPS follow-mode control.
+    const followBtn = document.getElementById('followBtn');
+
+    function setFollowMode(enabled) {
+      followLocation = enabled;
+      if (!followBtn) return;
+
+      followBtn.classList.toggle('hidden', !enabled);
+      followBtn.innerHTML = enabled
+        ? '<i class="fa-solid fa-location-crosshairs mr-1"></i> Following my location'
+        : '<i class="fa-solid fa-location-crosshairs mr-1"></i> Follow my location';
+    }
+
+    if (followBtn) {
+      followBtn.addEventListener('click', function () {
+        followLocation = true;
+
+        if (locationMarker) {
+          map.flyTo(locationMarker.getLatLng(), Math.max(map.getZoom(), 15), { duration: 0.8 });
+        }
+
+        followBtn.innerHTML = '<i class="fa-solid fa-location-crosshairs mr-1"></i> Following my location';
+      });
+    }
+
+    map.on('dragstart', function () {
+      if (watchId !== null && !suppressMapMoveHandler) {
+        followLocation = false;
+        if (followBtn) {
+          followBtn.classList.remove('hidden');
+          followBtn.innerHTML = '<i class="fa-solid fa-location-crosshairs mr-1"></i> Follow my location';
+        }
+      }
     });
 
     // 6. Geocoding Location Search (OpenStreetMap Nominatim)
@@ -474,7 +588,9 @@
         const query = searchInput.value;
         if (!query) return;
 
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
+        fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`, {
+            headers: { 'Accept': 'application/json' }
+          })
           .then(res => res.json())
           .then(data => {
             if (data && data.length > 0) {
